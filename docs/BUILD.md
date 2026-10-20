@@ -45,7 +45,7 @@ packages; every tool that is not in your distribution can live under `private/th
 | **Vulkan-Headers 1.4.357** | exactly this or newer | `runtime/src/vk_gen.h` was generated from it. Ubuntu 26.04 ships 1.4.341, which misses types and fails (see Troubleshooting). Use `-DNX_VULKAN_INCLUDE`. |
 | SDL3 | 3.2.x | The distribution's if it has it, else build it as below. |
 | .NET SDK | 10.0.401 | Tarball, no root. |
-| Python | 3.11+ with `venv` | pip packages: `capstone lz4 zstandard fonttools` |
+| Python | 3.11+ with `venv` | pip packages: `capstone lz4 zstandard fonttools`, plus `pillow` for the run scripts (`tools/frames.py` turns dumped frames into PNG; the build itself does not need it) |
 | `spirv-tools` | optional | Only for the `spirv-val` check of step 6. |
 | curl, tar, git | | |
 
@@ -112,7 +112,7 @@ curl -L https://codeberg.org/Software_arch/Ryubing/archive/a82350bb77.tar.gz | t
 ```sh
 python3 -m venv private/venv
 private/venv/bin/pip install --upgrade pip
-private/venv/bin/pip install capstone lz4 zstandard fonttools
+private/venv/bin/pip install capstone lz4 zstandard fonttools pillow
 ```
 
 If `venv` fails with "ensurepip is not available" (Ubuntu without `python3-venv`, and no root): create it without
@@ -121,7 +121,7 @@ pip and bootstrap pip, or use `uv`:
 ```sh
 python3 -m venv --without-pip private/venv
 curl -L https://bootstrap.pypa.io/get-pip.py -o private/get-pip.py && private/venv/bin/python private/get-pip.py
-# or: uv venv private/venv && uv pip install --python private/venv/bin/python capstone lz4 zstandard fonttools
+# or: uv venv private/venv && uv pip install --python private/venv/bin/python capstone lz4 zstandard fonttools pillow
 ```
 
 ### 2. Import the game
@@ -273,7 +273,7 @@ The reference platform. The steps are the ones in the README's "Build and run (m
 page only adds what changed since. The stages are the same as on Linux:
 
 1. **Tools:** Xcode command line tools, CMake, Ninja, Homebrew `sdl3 vulkan-headers vulkan-loader molten-vk
-   spirv-tools`, a Python venv (`capstone lz4 zstandard fonttools`), .NET SDK 10.0.401 and the Ryubing source
+   spirv-tools`, a Python venv (`capstone lz4 zstandard fonttools pillow`), .NET SDK 10.0.401 and the Ryubing source
    exactly as in [nvn/TRANSLATOR.md](nvn/TRANSLATOR.md) ("Setup (macOS 14, arm64)"; the tarball is the `osx-arm64` one).
 2. **Import:** the README says to extract with `nstool`; the importer above does the same job and also unpacks the
    RomFS. Build it with the same two lines (`cmake -S android/wonder/importer ...`) and run `nximport --exefs`.
@@ -290,27 +290,45 @@ page only adds what changed since. The stages are the same as on Linux:
 Needs a Vulkan 1.3 GPU. The full description is in [nvn/WINDOWS-PORT.md](nvn/WINDOWS-PORT.md) ("W0 in detail"); in
 short:
 
-1. **Tools:** Git, Visual Studio 2022 Build Tools ("Desktop development with C++" and "C++ Clang tools for Windows"),
-   CMake 3.28+, Ninja, Python 3.11+, the LunarG Vulkan SDK 1.4.x (it sets `VULKAN_SDK`; use 1.4.357 or newer) and the
-   .NET SDK 10.0.401. `. .\dev.ps1` sets up the compiler environment.
-2. **Data:** either do the import and the shader steps on the PC (the pieces are portable: the importer builds with
-   CMake, the Python tools run from `private\venv\Scripts\python`, and [TRANSLATOR.md](nvn/TRANSLATOR.md) has the
-   "Setup (Windows)" commands for the harness, with `tools/maxwell/apply_patch.py` standing in for `patch`), or
-   build the data on a Mac or Linux machine and pack it with `private/venv/bin/python tools/pack_pc_wonder.py`
-   (a 4 GB zip, extracted in the repository root on the PC).
+1. **Tools:** Git, Visual Studio Build Tools ("Desktop development with C++" and "C++ Clang tools for Windows";
+   2022 or newer, and a full Visual Studio works too), CMake 3.28+, Ninja, Python 3.11+, the LunarG Vulkan SDK 1.4.x
+   (it sets `VULKAN_SDK`; use 1.4.357 or newer) and the .NET SDK 10.0.401. `. .\dev.ps1` sets up the compiler
+   environment; it asks `vswhere` for the install, preferring one that carries the Clang component, and
+   `NX_VS_PATH` overrides that. **clang is not optional:** the generated code uses `unsigned __int128` and the
+   `__atomic_*` / `__builtin_*` builtins, which `cl.exe` does not compile.
+2. **Import:** run it on the PC. The importer builds with CMake and MSVC:
+   ```powershell
+   cmake -S android\wonder\importer -B private\build\importer -G Ninja -DCMAKE_BUILD_TYPE=Release
+   ninja -C private\build\importer
+   private\build\importer\nximport.exe --exefs --out private\wonder <prod.keys> <title.keys> <game.nsp or .xci>
+   ```
+   The rest of the data steps are portable too: the Python tools run from `private\venv\Scripts\python`, and
+   [TRANSLATOR.md](nvn/TRANSLATOR.md) has the "Setup (Windows)" commands for the harness, with
+   `tools/maxwell/apply_patch.py` standing in for `patch`. Building the data on a Mac or Linux machine and packing
+   it with `private/venv/bin/python tools/pack_pc_wonder.py` (a 4 GB zip, extracted in the repository root on the
+   PC) is still an option, but no longer necessary.
 3. **Recompile** with the two `python -m recomp` commands (Linux step 3), using `private\venv\Scripts\python`.
 4. **Shaders:** all groups of Linux step 5, then the batch (Linux step 6) with
-   `--spirv-val C:\VulkanSDK\<version>\Bin\spirv-val.exe`. `tools/extract_shaders.sh` is bash; on Windows use the
-   plain commands of that step (they are listed in PowerShell form in TRANSLATOR.md).
-5. **Build**, from an "x64 Native Tools Command Prompt for VS 2022":
+   `--spirv-val C:\VulkanSDK\<version>\Bin\spirv-val.exe`. `tools/extract_shaders.sh` is bash, and the Git Bash
+   that comes with Git for Windows runs it as it is, given the venv's interpreter:
+   `PY="$PWD/private/venv/Scripts/python.exe" JOBS=3 bash tools/extract_shaders.sh`. Otherwise use the plain
+   commands of that step (they are listed in PowerShell form in TRANSLATOR.md).
+5. **Build**, in a shell where `. .\dev.ps1` has run (step 1):
    ```powershell
    cmake -S . -B private\wonder\build -G Ninja -DNX_GAME=wonder -DCMAKE_BUILD_TYPE=Release `
          -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl
    ninja -C private\wonder\build -j6 wonder
    ```
+   Add `-DNX_NO_CONSOLE=ON` to link the game as a GUI binary, with no console window behind it (handy for a
+   portable folder made with `tools/pack_pc_portable.py`). It is off by default because without a console the log
+   only exists where `NX_LOG` names a file, and the test scripts read stdout and stderr.
 6. **Run:** `tools\wonder_run.ps1`, or `private\wonder\build\wonder.exe` directly (`NX_LOG`, `NX_MEM_LIMIT_GB`).
+   The game looks for its data in `private\wonder` relative to the working directory, so run it from the
+   repository root, or set `NX_DATA_ROOT`.
 
-The Windows steps were written from the repository's own docs and were not re-run for this guide.
+These steps were run start to finish on 2026-10-19: Windows 11, Visual Studio 18 Build Tools with clang 22.1.3,
+Vulkan SDK 1.4.363, Ryzen 5 5600X and an RTX 4060, from an NSP of the base game. Every check of "Checks at a
+glance" matched, and the build took 15 minutes with `-j6`.
 
 ## Android (arm64)
 
@@ -355,6 +373,9 @@ Build on Linux (verified) or macOS. You need steps 2 to 6 of the Linux part firs
 | `ensurepip is not available` | See the end of Linux step 1: `python3 -m venv --without-pip` plus `get-pip.py`, or `uv`. |
 | `Could NOT find SDL3` | Pass `-DCMAKE_PREFIX_PATH=<sdl3 install prefix>`. |
 | `patch: command not found` while building the harness | Install `patch` (Windows uses `tools/maxwell/apply_patch.py` automatically). |
+| Windows: thousands of errors in the generated code (`unsigned __int128`, `__atomic_compare_exchange_n`, `__builtin_popcountll`) | The build is using `cl.exe`. Configure with `-DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl`, and install "C++ Clang tools for Windows" if `clang-cl` is missing (`. .\dev.ps1` warns when it is). |
+| Windows: `dev.ps1` fails at `Import-Module ... DevShell.dll` | No Visual Studio with the C++ tools was found, or the one found has no DevShell. Point `NX_VS_PATH` at the install to use. |
+| Windows: `ModuleNotFoundError: No module named 'PIL'` from `tools/frames.py` | `pip install pillow` in `private\venv`; the run scripts use it to turn dumped frames into PNG. |
 | `dotnet: command not found` or the harness picks a different SDK | `export DOTNET_ROOT=...` and `PATH=$DOTNET_ROOT:$PATH` in the shell you build and run in (they do not persist). |
 | `spirv-val: No such file` in the batch | Pass your `--spirv-val <path>` (the default is Homebrew's) or `--no-val`. |
 | `ExeFS block N fails its check` in the importer | A damaged dump or copy. Check the XCI size and SHA-256 ([WONDER-DUMP.md](WONDER-DUMP.md)). |

@@ -145,8 +145,11 @@ Before the fix (top: Intel, characters and terrain black; bottom: RTX), and afte
 Wonder runs on Windows 10/11 with a Vulkan 1.3 GPU (tested on an NVIDIA RTX 3050 and on Intel). The port is
 described in [docs/nvn/WINDOWS-PORT.md](docs/nvn/WINDOWS-PORT.md) and [WINDOWS-PLAN.md](docs/nvn/WINDOWS-PLAN.md),
 the PC quality work in [docs/nvn/pc-quality/](docs/nvn/pc-quality/). `dev.ps1` sets up the build environment
-(Visual Studio Build Tools, clang, CMake, Ninja, Vulkan SDK) and `tools/pack_pc_wonder.py` packs your own data for
-the PC. The recompile, shader and build steps are the same as in the macOS section below.
+(Visual Studio Build Tools, clang, CMake, Ninja, Vulkan SDK). Every stage runs on the PC, the import included
+(the whole guide was run there on 2026-10-19: [docs/BUILD.md](docs/BUILD.md), "Windows"); `tools/pack_pc_wonder.py`
+still packs data built on a Mac or Linux machine if you would rather do it that way, and
+`tools/pack_pc_portable.py` packs a ready-to-run folder for another PC of your own. The recompile, shader and
+build steps are the same as in the macOS section below.
 
 ### Linux
 
@@ -159,7 +162,7 @@ Nothing needs root: every tool can live under `private/third_party/`.
 Requirements: clang, CMake, Ninja, the Vulkan loader, SDL 3 (the distribution's, or built from source with
 `-DCMAKE_INSTALL_PREFIX=private/third_party/sdl3`), the Vulkan headers 1.4.357 (`runtime/src/vk_gen.h` was
 generated from them; older distribution headers miss some types), .NET SDK 10 (tarball) and a Python 3 venv with
-`capstone lz4 zstandard fonttools`.
+`capstone lz4 zstandard fonttools` (plus `pillow` for the run scripts' frame dumps, not for the build).
 
 1. **Import** the XCI with the on-device importer built for the host; `--exefs` also keeps the raw NSOs the
    recompiler reads:
