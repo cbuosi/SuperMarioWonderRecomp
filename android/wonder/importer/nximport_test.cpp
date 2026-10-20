@@ -2,8 +2,12 @@
 // checks what the importer finds in them. The synthetic files are not valid NCAs, so every run ends in the importer's
 // "no game program" error; what is asserted is the log line that says what it found and the errors of broken images.
 //   nximport_test
+#include "nximport_win.h"  // first: POSIX shim for the Windows host build (no-op elsewhere)
+
+#ifndef _WIN32
 #include <fcntl.h>
 #include <unistd.h>
+#endif
 
 #include <cstdio>
 #include <cstdlib>
@@ -121,8 +125,11 @@ bool has(const std::string& s, const char* t) { return s.find(t) != std::string:
 }  // namespace
 
 int main() {
-    char tpl[] = "/tmp/nximport_test_XXXXXX";
-    if (!mkdtemp(tpl)) return 2;
+    const char* tmp = getenv("TMPDIR");
+    if (!tmp || !*tmp) tmp = getenv("TEMP");  // Windows has no /tmp
+    if (!tmp || !*tmp) tmp = "/tmp";
+    std::string tpl = std::string(tmp) + "/nximport_test_XXXXXX";
+    if (!mkdtemp(tpl.data())) return 2;
     tmpdir = tpl;
     Bytes junk(0x40, 0xAB);
 
@@ -171,7 +178,11 @@ int main() {
     check(r.rc != 0 && has(r.error, "no .nsp or .xci"), "no container in the folder", r);
 
     printf("%s\n", fails ? "FAILED" : "all passed");
+#ifdef _WIN32
+    std::string cmd = "rmdir /s /q \"" + tmpdir + "\"";
+#else
     std::string cmd = "rm -rf '" + tmpdir + "'";
+#endif
     if (system(cmd.c_str())) {}
     return fails ? 1 : 0;
 }

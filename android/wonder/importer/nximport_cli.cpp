@@ -1,8 +1,12 @@
 // PC test harness of the on-device importer: the same code the APK runs, fed with files from the command line.
 //   nximport --out <data folder> [--title 010015100B514000] [--verify] [--exefs] <prod.keys> [title.keys] <x.nsp|x.xci> ...
 // Prints progress and log lines (never key values).
+#include "nximport_win.h"  // first: POSIX shim for the Windows host build (no-op elsewhere)
+
+#ifndef _WIN32
 #include <fcntl.h>
 #include <unistd.h>
+#endif
 
 #include <atomic>
 #include <chrono>
@@ -34,6 +38,8 @@ int main(int argc, char** argv) {
                 return 2;
             }
             const char* slash = strrchr(argv[i], '/');
+            const char* back = strrchr(argv[i], '\\');  // Windows paths
+            if (back && (!slash || back > slash)) slash = back;
             inputs.push_back({slash ? slash + 1 : argv[i], fd});
         }
     }

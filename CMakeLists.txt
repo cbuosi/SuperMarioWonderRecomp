@@ -34,6 +34,7 @@ endif()
 
 # Unit tests of runtime pieces that build without the game (docs/nvn/WINDOWS-PLAN.md, "Test plan"): ctest.
 option(NX_TESTS "Build the standalone unit tests" OFF)
+option(NX_NO_CONSOLE "Windows: link the game as a GUI binary, with no console window" OFF)
 if(NX_TESTS AND NOT ANDROID)
     enable_testing()
     add_executable(gpu_pick_test tests/gpu_pick_test.cpp runtime/src/nvn/nvn_gpu_pick.cpp)
@@ -223,5 +224,11 @@ else()
         # Keep host allocations low so the guest ranges (0x40_0000_0000..0x70_0000_0000) are always free; a big
         # main-thread stack (recompiled calls nest deeply); a link map for tools/symbolize.py.
         target_link_options(${NX_GAME} PRIVATE /STACK:67108864 /HIGHENTROPYVA:NO /MAP)
+        # NX_NO_CONSOLE: link as a GUI binary, so double-clicking the game opens no console window. The entry point
+        # stays main(). Without a console there is nowhere for the log to go unless NX_LOG names a file, so the
+        # default is off (the test scripts read stdout and stderr).
+        if(NX_NO_CONSOLE)
+            target_link_options(${NX_GAME} PRIVATE /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup)
+        endif()
     endif()
 endif()

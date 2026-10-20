@@ -19,12 +19,16 @@
 //   IVFC    RomFS hash tree: levels 0..n-2 hash the next level (SHA-256 per 2^order block, the last block padded with
 //           zeros); level 0 is hashed by the master hash in the fs header. The last level is the RomFS image.
 //   NSO     "NSO0", three LZ4 segments (text, ro, data) with SHA-256 of each decompressed segment.
+#include "nximport_win.h"  // first: POSIX shim for the Windows host build (no-op elsewhere)
+
 #include "nximport.h"
 
+#ifndef _WIN32
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <array>
